@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 const Router: express.Router = express.Router();
 
 const ASSETS_COLLECTION = "assets";
+const ROI_FIELD = "estimatedROI";
 
 // #region Helper Functions
 // Feel free to move this into its own file if you feel that it is necessary.
@@ -24,8 +25,59 @@ async function checkIfAssetExists(assetId: number) {
 
 // #endregion
 
+// #region Data Classes
 
-Router.get("/:assetId",
+/**
+ * Response structure for the shortlist request.
+ */
+class ShortListResponse {
+  success = false;
+  data: Array<ShortenedAsset> = [];
+}
+
+/**
+ * A short version of an asset's data, perfect for the front page.
+ */
+class ShortenedAsset {
+  /**
+   * Creates a new shortened asset class.
+   * @param {number} assetId The assetId of the asset.
+   * @param {string} image The main image of the asset.
+   * @param {string} propertyType The main property type of the asset.
+   * @param {number} totalTokens The total number of tokens for the asset.
+   * @param {number} tokenPrice The price of the token in the token currency.
+   * @param {string} currency The currency of the token price & ROI.
+   * @param {number} estimatedROI The estimated total ROI of the asset.
+   * @param {number} cashPayout The annual cash payout of the asset.
+   */
+  constructor(assetId: number, image: string, propertyType: string,
+      totalTokens: number, tokenPrice: number, currency: string,
+      estimatedROI: number, cashPayout: number) {
+    this.assetId = assetId;
+    this.image = image;
+    this.currency = currency;
+    this.propertyType = propertyType;
+    this.totalTokens = totalTokens;
+    this.tokenPrice = tokenPrice;
+    this.estimatedROI = estimatedROI;
+    this.cashPayout = cashPayout;
+  }
+
+  assetId = 0;
+  image = "";
+  propertyType = "";
+  currency = "";
+  totalTokens = 0;
+  tokenPrice = 0;
+  estimatedROI = 0;
+  cashPayout = 0;
+  purchasedTokens = 0;
+}
+
+// #endregion
+
+
+Router.get("/get/:assetId",
     async function(req: express.Request, res: express.Response) {
       const assetId: number = parseInt(req.params.assetId);
       const assetIdIsNotAValidNumber: boolean = isNaN(assetId);
@@ -36,12 +88,52 @@ Router.get("/:assetId",
 
       const assetCheck = await checkIfAssetExists(assetId);
       if (!assetCheck.returnedTrue) {
-        res.status(400).json({success: false, error: "Queried assetId does not exist."});
+        res.status(400)
+            .json({success: false, error: "Queried assetId does not exist."});
         return;
       }
 
 
       res.status(200).json({success: true, ...assetCheck.asset.docs[0].data()});
+      return;
+    });
+
+Router.get("/get/shortlist/:limit/:offset",
+    async function(req: express.Request, res: express.Response) {
+      const offset: number = parseInt(req.params.offset);
+      const offsetIsNotAValidNumber: boolean = isNaN(offset);
+      const limit: number = parseInt(req.params.limit);
+      const limitIsNotAValidNumber: boolean = isNaN(limit);
+      if (offsetIsNotAValidNumber || limitIsNotAValidNumber) {
+        res.status(400)
+            .json({
+              success: false,
+              error: "Offset and limit must be integers.",
+            });
+        return;
+      }
+
+      const db = admin.firestore();
+      const assetRef = db.collection(ASSETS_COLLECTION)
+          .orderBy(ROI_FIELD)
+          .limit(limit)
+          .offset(offset);
+      const assetSnapshot = await assetRef.get();
+
+      const json: ShortListResponse = {success: true, data: []};
+      assetSnapshot.docs.forEach((doc) => {
+        const {
+          assetId, images, propertyDetails, totalTokens,
+          tokenPrice, estimatedROI, cashPayout, currency} = doc.data();
+        const sAsset = new ShortenedAsset(assetId, images[0],
+            propertyDetails.propertyType[0], currency, totalTokens,
+            tokenPrice, estimatedROI, cashPayout);
+        // @TODO: set sAsset purchasedTokens by querying blockchain
+
+        json.data.push(sAsset);
+      });
+
+      res.status(200).json(json);
       return;
     });
 
