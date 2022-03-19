@@ -36,11 +36,12 @@ Router.get("/:assetId",
 
       const assetCheck = await checkIfAssetExists(assetId);
       if (!assetCheck.returnedTrue) {
-        res.status(400).json({success: false, error: "Invalid assetId."});
+        res.status(400).json({success: false, error: "Queried assetId does not exist."});
         return;
       }
 
-      res.status(200).json({success: true, ...assetCheck.asset});
+
+      res.status(200).json({success: true, ...assetCheck.asset.docs[0].data()});
       return;
     });
 

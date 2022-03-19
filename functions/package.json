@@ -3,7 +3,7 @@
   "scripts": {
     "lint": "eslint --ext .js,.ts .",
     "build": "tsc",
-    "serve": "npm run build && cross-env NODE_ENV=development firebase emulators:start --only functions",
+    "serve": "npm run build && cross-env NODE_ENV=development firebase emulators:start",
     "serve:import": "npm run serve -- --import=../emulator-data",
     "serve:importexport": "npm run serve:import -- --export-on-exit=../emulator-data",
     "shell": "npm run build && firebase functions:shell",
