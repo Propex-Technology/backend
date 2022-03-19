@@ -2,6 +2,7 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import * as cors from "cors";
 import * as functions from "firebase-functions";
+import helmet from "helmet";
 // import { validationErrorMiddleware } from "./middleware/schemaValidation";
 
 // Routers
@@ -20,8 +21,8 @@ const corsOptions = {
 
 // Express Setup
 const app = express();
-// https://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
-app.disable("x-powered-by");
+// https://expressjs.com/en/advanced/best-practice-security.html#use-helmet
+app.use(helmet());
 app.use(cors(corsOptions));
 // app.use(validationErrorMiddleware);
 
