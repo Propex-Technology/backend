@@ -36,6 +36,18 @@ class ShortListResponse {
 }
 
 /**
+ * A class that represent's an assets' location.
+ */
+class Location {
+  addressLine1 = "";
+  addressLine2 = "";
+  city = "";
+  province = "";
+  zip = "";
+  googleMapsLink = "";
+}
+
+/**
  * A short version of an asset's data, perfect for the front page.
  */
 class ShortenedAsset {
@@ -49,10 +61,13 @@ class ShortenedAsset {
    * @param {string} currency The currency of the token price & ROI.
    * @param {number} estimatedROI The estimated total ROI of the asset.
    * @param {number} cashPayout The annual cash payout of the asset.
+   * @param {number} raiseGoal The raise goal of the asset.
+   * @param {Location} location The location of the asset.
    */
   constructor(assetId: number, image: string, propertyType: string,
       totalTokens: number, tokenPrice: number, currency: string,
-      estimatedROI: number, cashPayout: number) {
+      estimatedROI: number, cashPayout: number, raiseGoal: number,
+      location: Location) {
     this.assetId = assetId;
     this.image = image;
     this.currency = currency;
@@ -61,6 +76,8 @@ class ShortenedAsset {
     this.tokenPrice = tokenPrice;
     this.estimatedROI = estimatedROI;
     this.cashPayout = cashPayout;
+    this.raiseGoal = raiseGoal;
+    this.location = location;
   }
 
   assetId = 0;
@@ -72,6 +89,8 @@ class ShortenedAsset {
   estimatedROI = 0;
   cashPayout = 0;
   purchasedTokens = 0;
+  raiseGoal = 0;
+  location: Location | undefined;
 }
 
 // #endregion
@@ -124,10 +143,11 @@ Router.get("/get/shortlist/:limit/:offset",
       assetSnapshot.docs.forEach((doc) => {
         const {
           assetId, images, propertyDetails, totalTokens,
-          tokenPrice, estimatedROI, cashPayout, currency} = doc.data();
+          tokenPrice, estimatedROI, cashPayout, currency,
+          raiseGoal, location} = doc.data();
         const sAsset = new ShortenedAsset(assetId, images[0],
             propertyDetails.propertyType[0], currency, totalTokens,
-            tokenPrice, estimatedROI, cashPayout);
+            tokenPrice, estimatedROI, cashPayout, raiseGoal, location);
         // @TODO: set sAsset purchasedTokens by querying blockchain
 
         json.data.push(sAsset);
