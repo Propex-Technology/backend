@@ -6,7 +6,7 @@ import helmet from "helmet";
 // import { validationErrorMiddleware } from "./middleware/schemaValidation";
 
 // Routers
-import property from "./v1/property";
+import assets from "./v1/assets";
 
 // Firebase
 admin.initializeApp({
@@ -27,7 +27,7 @@ app.use(cors(corsOptions));
 // app.use(validationErrorMiddleware);
 
 // Express Routers
-app.use("/property", property);
+app.use("/assets", assets);
 
 
 export const v1: functions.HttpsFunction = functions.https.onRequest(app);

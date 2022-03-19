@@ -28,5 +28,6 @@ module.exports = {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
     "new-cap": 0,
+    "max-len": [1, {"ignoreComments": true}],
   },
 };
