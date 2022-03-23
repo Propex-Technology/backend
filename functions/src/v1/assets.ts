@@ -159,7 +159,6 @@ Router.get("/get/shortlist/:limit/:offset",
     });
 
 if (process.env.NODE_ENV == "development") {
-  console.log("HECKAROONIE");
   Router.get("/duplicate/:assetId",
       async function(req: express.Request, res: express.Response) {
         const assetId: number = parseInt(req.params.assetId);
