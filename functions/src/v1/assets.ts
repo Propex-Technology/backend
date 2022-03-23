@@ -146,8 +146,9 @@ Router.get("/get/shortlist/:limit/:offset",
           tokenPrice, estimatedROI, cashPayout, currency,
           raiseGoal, location} = doc.data();
         const sAsset = new ShortenedAsset(assetId, images[0],
-            propertyDetails.propertyType[0], currency, totalTokens,
-            tokenPrice, estimatedROI, cashPayout, raiseGoal, location);
+            propertyDetails.propertyType[0], totalTokens,
+            tokenPrice, currency, estimatedROI, cashPayout,
+            raiseGoal, location);
         // @TODO: set sAsset purchasedTokens by querying blockchain
 
         json.data.push(sAsset);
@@ -156,5 +157,35 @@ Router.get("/get/shortlist/:limit/:offset",
       res.status(200).json(json);
       return;
     });
+
+if (process.env.NODE_ENV == "development") {
+  console.log("HECKAROONIE");
+  Router.get("/duplicate/:assetId",
+      async function(req: express.Request, res: express.Response) {
+        const assetId: number = parseInt(req.params.assetId);
+        const assetIdIsNotAValidNumber: boolean = isNaN(assetId);
+        if (assetIdIsNotAValidNumber) {
+          res.status(400)
+              .json({
+                success: false,
+                error: "AssetId must be valid.",
+              });
+          return;
+        }
+
+        const assetCheck = await checkIfAssetExists(assetId);
+        if (!assetCheck.returnedTrue) {
+          res.status(400)
+              .json({success: false, error: "Queried assetId does not exist."});
+          return;
+        }
+
+        const oldData = assetCheck.asset.docs[0].data();
+        const db = admin.firestore();
+        db.collection(ASSETS_COLLECTION).add(oldData);
+
+        res.status(200).json({success: true});
+      });
+}
 
 export default Router;

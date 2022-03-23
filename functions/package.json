@@ -8,7 +8,7 @@
     "serve:importexport": "npm run serve:import -- --export-on-exit=../emulator-data",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
+    "deploy": "firebase deploy ",
     "logs": "firebase functions:log",
     "fixlint": "eslint --ext .js,.ts . --fix",
     "kill8080": "npx kill-port 8080"
