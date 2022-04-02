@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 const Router: express.Router = express.Router();
 
 const ASSETS_COLLECTION = "assets";
+const MANAGER_COLLECTION = "managers";
 const ROI_FIELD = "estimatedROI";
 
 // #region Helper Functions
@@ -112,8 +113,14 @@ Router.get("/get/:assetId",
         return;
       }
 
+      // Get manager data
+      const assetData = assetCheck.asset.docs[0].data();
+      const db = admin.firestore();
+      const managerRef = db.collection(MANAGER_COLLECTION)
+          .where("managerId", "==", assetData.managerId);
+      const managerData = (await managerRef.get()).docs[0].data();
 
-      res.status(200).json({success: true, ...assetCheck.asset.docs[0].data()});
+      res.status(200).json({success: true, ...assetData, manager: managerData});
       return;
     });
 
