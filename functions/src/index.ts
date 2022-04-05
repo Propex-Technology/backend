@@ -7,6 +7,7 @@ import helmet from "helmet";
 
 // Routers
 import assets from "./v1/assets";
+import users from "./v1/users";
 
 // Firebase
 admin.initializeApp({
@@ -28,6 +29,6 @@ app.use(cors(corsOptions));
 
 // Express Routers
 app.use("/assets", assets);
-
+app.use("/users", users);
 
 export const v1: functions.HttpsFunction = functions.https.onRequest(app);
