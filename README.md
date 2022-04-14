@@ -50,3 +50,13 @@ It can be tricky using Express if you aren't used to it. Fortunately, the
 ### Minor Notes
 You should expect emulator routes to be under 
 `http://localhost:5001/propex-staging/us-central1/VERSION_NUMBER/ROUTE`.
+
+## Dev Keys
+There is a file at `functions/devKeys.ts` that is ignored for security reasons. Please 
+request a copy of `devKeys.ts` from an administrator. Here is what the file should export:
+```
+{
+    personaSandboxKey: "********",
+    personaProductionKey: "********",
+}
+```

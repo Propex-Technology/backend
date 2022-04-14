@@ -1,6 +1,6 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
-import { checkIfAssetExists } from "./checkIfAssetExists";
+import {checkIfAssetExists} from "./checkIfAssetExists";
 
 const Router: express.Router = express.Router();
 

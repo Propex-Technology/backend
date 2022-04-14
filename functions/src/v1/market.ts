@@ -16,7 +16,7 @@ Router.get("/get/:assetId",
 
     // 3. Read stat
 
-    // 4. 
+    // 4.
 
     // 2. Get user from auth token.
     const authVerification = await admin.auth().verifyIdToken(authToken);

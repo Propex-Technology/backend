@@ -10,10 +10,14 @@ export const ASSETS_COLLECTION = "assets";
  * @return {{returnedTrue: boolean, asset: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>}}
  *  if the asset exists, asset: the asset's snapshot if it exists.
  */
-export async function checkIfAssetExists(assetId: number) {
+export async function checkIfAssetExists(assetId: number):
+  Promise<{
+    returnedTrue: boolean;
+    asset: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+  }> {
   const db = admin.firestore();
   const assetRef = db.collection(ASSETS_COLLECTION)
-    .where("assetId", "==", assetId);
+      .where("assetId", "==", assetId);
   const assetSnapshot = await assetRef.get();
-  return { returnedTrue: assetSnapshot.size > 0, asset: assetSnapshot };
+  return {returnedTrue: assetSnapshot.size > 0, asset: assetSnapshot};
 }
