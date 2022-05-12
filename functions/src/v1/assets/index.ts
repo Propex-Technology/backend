@@ -1,11 +1,14 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
-import {checkIfAssetExists} from "./checkIfAssetExists";
+import { firestore } from "firebase-admin";
+import { checkIfAssetExists } from "./checkIfAssetExists";
 
 const Router: express.Router = express.Router();
 
 export const ASSETS_COLLECTION = "assets";
 const MANAGER_COLLECTION = "managers";
+const PRIMARY_SALE_COLLECTION = "primary_offerings";
+const OFFERING_RESERVATIONS_COLLECTION = "reservations";
 const ROI_FIELD = "estimatedROI";
 
 // #endregion
@@ -50,9 +53,9 @@ class ShortenedAsset {
    * @param {Location} location The location of the asset.
    */
   constructor(assetId: number, image: string, propertyType: string,
-      totalTokens: number, tokenPrice: number, currency: string,
-      estimatedROI: number, cashPayout: number, raiseGoal: number,
-      location: Location) {
+    totalTokens: number, tokenPrice: number, currency: string,
+    estimatedROI: number, cashPayout: number, raiseGoal: number,
+    location: Location) {
     this.assetId = assetId;
     this.image = image;
     this.currency = currency;
@@ -78,104 +81,228 @@ class ShortenedAsset {
   location: Location | undefined;
 }
 
+/**
+ * A type that has to do with an asset's primary offering.
+ */
+type PrimaryOffering = {
+  assetId: number,
+  totalTokens: number,
+  tokensLeft: number
+}
+
+/**
+ * Data that has to do with when a user reserved tokens for purchase.
+ */
+type Reservation = {
+  userId: string,
+  pendingReserved: number,
+  lastUpdated: number,
+  payments: {
+    paymentId: string,
+    paymentBegan: boolean,
+    paymentRecieved: boolean,
+    reserved: number
+  }[]
+};
+
 // #endregion
 
 
 Router.get("/get/:assetId",
-    async function(req: express.Request, res: express.Response) {
+  async function (req: express.Request, res: express.Response) {
+    const assetId: number = parseInt(req.params.assetId);
+    const assetIdIsNotAValidNumber: boolean = isNaN(assetId);
+    if (assetIdIsNotAValidNumber) {
+      res.status(400).json({ success: false, error: "Invalid assetId." });
+      return;
+    }
+
+    const assetCheck = await checkIfAssetExists(assetId);
+    if (!assetCheck.returnedTrue) {
+      res.status(400)
+        .json({ success: false, error: "Queried assetId does not exist." });
+      return;
+    }
+
+    // Get manager data
+    const assetData = assetCheck.asset.docs[0].data();
+    const db = admin.firestore();
+    const managerRef = db.collection(MANAGER_COLLECTION)
+      .where("managerId", "==", assetData.managerId);
+    const managerData = (await managerRef.get()).docs[0].data();
+
+    res.status(200).json({ success: true, ...assetData, manager: managerData });
+    return;
+  });
+
+Router.get("/get/shortlist/:limit/:offset",
+  async function (req: express.Request, res: express.Response) {
+    const offset: number = parseInt(req.params.offset);
+    const offsetIsNotAValidNumber: boolean = isNaN(offset);
+    const limit: number = parseInt(req.params.limit);
+    const limitIsNotAValidNumber: boolean = isNaN(limit);
+    if (offsetIsNotAValidNumber || limitIsNotAValidNumber) {
+      res.status(400)
+        .json({
+          success: false,
+          error: "Offset and limit must be integers.",
+        });
+      return;
+    }
+
+    const db = admin.firestore();
+    const assetRef = db.collection(ASSETS_COLLECTION)
+      .orderBy(ROI_FIELD)
+      .limit(limit)
+      .offset(offset);
+    const assetSnapshot = await assetRef.get();
+
+    const json: ShortListResponse = { success: true, data: [] };
+    assetSnapshot.docs.forEach((doc) => {
+      const {
+        assetId, images, propertyDetails, totalTokens,
+        tokenPrice, estimatedROI, cashPayout, currency,
+        raiseGoal, location } = doc.data();
+      const sAsset = new ShortenedAsset(assetId, images[0],
+        propertyDetails.propertyType[0], totalTokens,
+        tokenPrice, currency, estimatedROI, cashPayout,
+        raiseGoal, location);
+      // @TODO: set sAsset purchasedTokens by querying blockchain
+
+      json.data.push(sAsset);
+    });
+
+    res.status(200).json(json);
+    return;
+  });
+
+Router.post("/reserveForPurchase",
+  async function (req: express.Request, res: express.Response) {
+    const assetId: number = parseInt(req.params.assetId);
+    const amount: number = parseInt(req.params.amount);
+
+    if (isNaN(assetId)) {
+      res.status(400).json({ success: false, error: "Invalid assetId." });
+      return;
+    }
+    if (isNaN(amount)) {
+      res.status(400).json({ success: false, error: "Invalid amount." });
+      return;
+    }
+
+    const assetCheck = await checkIfAssetExists(assetId);
+    if (!assetCheck.returnedTrue) {
+      res.status(400)
+        .json({ success: false, error: "Queried assetId does not exist." });
+      return;
+    }
+
+    // Assert that the user exists.
+    const authToken = req.get("authorization");
+    if (authToken == null) {
+      return res.status(403).json({
+        success: false,
+        error: "You do not have permisson.",
+      });
+    }
+    const authVerification = await admin.auth().verifyIdToken(authToken);
+    const userId = authVerification.uid;
+
+    // TODO: assert that user is authenticated & has KYC
+
+    // Attempt, in transaction, to purchase.
+    let attempts: number = 0;
+    do {
+      try {
+        const db = admin.firestore();
+        const primaryRef = db.collection(PRIMARY_SALE_COLLECTION).doc(assetId.toString());
+        const reservationRef = primaryRef.collection(OFFERING_RESERVATIONS_COLLECTION)
+          .doc(userId);
+
+        await db.runTransaction(async (t) => {
+          // 1. Get the data.
+          const doc = await t.get(primaryRef);
+          const data: PrimaryOffering = await doc.data() as PrimaryOffering;
+
+          // 2. If there is space, continue. Else return.
+          if (data.tokensLeft < amount) {
+            res.status(200).json({ success: false, reason: "Not enough tokens remaining." });
+            return; // Premature return
+          }
+
+          // 3. Add to total tokens remaining.
+          t.update(primaryRef, { tokensLeft: data.tokensLeft - amount });
+
+          // 4. Add entry to user's reservation.
+          const paymentId = Math.floor(Math.random() * 1000000).toString();
+          const resDoc = await t.get(reservationRef);
+          if (resDoc.exists) {
+            const resData: Reservation = await resDoc.data() as Reservation;
+            resData.payments.push({
+              paymentId,
+              paymentBegan: false,
+              paymentRecieved: false,
+              reserved: amount
+            });
+            t.update(reservationRef, { 
+              pendingReserved: resData.pendingReserved + amount,
+              payments: resData.payments
+            });
+          }
+          else {
+            const newReservation: Reservation = {
+              userId,
+              pendingReserved: amount,
+              lastUpdated: new Date().getTime(),
+              payments: [{ 
+                paymentId, paymentBegan: false, paymentRecieved: false, reserved: amount 
+              }]
+            };
+            t.create(reservationRef, newReservation);
+          }
+        });
+
+        return;
+
+      } catch (e) {
+        // Await before attempting again.
+        await new Promise(resolve => setTimeout(resolve, (attempts + 1) * 0.2));
+        attempts++;
+      }
+    }
+    while (attempts < 10);
+
+    res.status(408).json({ success: false, reason: "Timed out." });
+    return;
+  });
+
+if (process.env.NODE_ENV == "development") {
+  Router.get("/duplicate/:assetId",
+    async function (req: express.Request, res: express.Response) {
       const assetId: number = parseInt(req.params.assetId);
       const assetIdIsNotAValidNumber: boolean = isNaN(assetId);
       if (assetIdIsNotAValidNumber) {
-        res.status(400).json({success: false, error: "Invalid assetId."});
+        res.status(400)
+          .json({
+            success: false,
+            error: "AssetId must be valid.",
+          });
         return;
       }
 
       const assetCheck = await checkIfAssetExists(assetId);
       if (!assetCheck.returnedTrue) {
         res.status(400)
-            .json({success: false, error: "Queried assetId does not exist."});
+          .json({ success: false, error: "Queried assetId does not exist." });
         return;
       }
 
-      // Get manager data
-      const assetData = assetCheck.asset.docs[0].data();
+      const oldData = assetCheck.asset.docs[0].data();
       const db = admin.firestore();
-      const managerRef = db.collection(MANAGER_COLLECTION)
-          .where("managerId", "==", assetData.managerId);
-      const managerData = (await managerRef.get()).docs[0].data();
+      db.collection(ASSETS_COLLECTION).add(oldData);
 
-      res.status(200).json({success: true, ...assetData, manager: managerData});
-      return;
+      res.status(200).json({ success: true });
     });
-
-Router.get("/get/shortlist/:limit/:offset",
-    async function(req: express.Request, res: express.Response) {
-      const offset: number = parseInt(req.params.offset);
-      const offsetIsNotAValidNumber: boolean = isNaN(offset);
-      const limit: number = parseInt(req.params.limit);
-      const limitIsNotAValidNumber: boolean = isNaN(limit);
-      if (offsetIsNotAValidNumber || limitIsNotAValidNumber) {
-        res.status(400)
-            .json({
-              success: false,
-              error: "Offset and limit must be integers.",
-            });
-        return;
-      }
-
-      const db = admin.firestore();
-      const assetRef = db.collection(ASSETS_COLLECTION)
-          .orderBy(ROI_FIELD)
-          .limit(limit)
-          .offset(offset);
-      const assetSnapshot = await assetRef.get();
-
-      const json: ShortListResponse = {success: true, data: []};
-      assetSnapshot.docs.forEach((doc) => {
-        const {
-          assetId, images, propertyDetails, totalTokens,
-          tokenPrice, estimatedROI, cashPayout, currency,
-          raiseGoal, location} = doc.data();
-        const sAsset = new ShortenedAsset(assetId, images[0],
-            propertyDetails.propertyType[0], totalTokens,
-            tokenPrice, currency, estimatedROI, cashPayout,
-            raiseGoal, location);
-        // @TODO: set sAsset purchasedTokens by querying blockchain
-
-        json.data.push(sAsset);
-      });
-
-      res.status(200).json(json);
-      return;
-    });
-
-if (process.env.NODE_ENV == "development") {
-  Router.get("/duplicate/:assetId",
-      async function(req: express.Request, res: express.Response) {
-        const assetId: number = parseInt(req.params.assetId);
-        const assetIdIsNotAValidNumber: boolean = isNaN(assetId);
-        if (assetIdIsNotAValidNumber) {
-          res.status(400)
-              .json({
-                success: false,
-                error: "AssetId must be valid.",
-              });
-          return;
-        }
-
-        const assetCheck = await checkIfAssetExists(assetId);
-        if (!assetCheck.returnedTrue) {
-          res.status(400)
-              .json({success: false, error: "Queried assetId does not exist."});
-          return;
-        }
-
-        const oldData = assetCheck.asset.docs[0].data();
-        const db = admin.firestore();
-        db.collection(ASSETS_COLLECTION).add(oldData);
-
-        res.status(200).json({success: true});
-      });
 }
 
 export default Router;

@@ -15,16 +15,19 @@ admin.initializeApp({
 });
 
 // CORS options
+/*
 const corsOptions = {
-  origin: "*", // @TODO: add correct CORS options, switch based on environment
-  optionsSuccessStatus: 200,
+  // origin: true, // "*", // @TODO: add correct CORS options, switch based on environment
+  // optionsSuccessStatus: 200,
+  origin: "*",
 };
+*/
 
 // Express Setup
 const app = express();
 // https://expressjs.com/en/advanced/best-practice-security.html#use-helmet
 app.use(helmet());
-app.use(cors(corsOptions));
+app.use(cors());
 // app.use(validationErrorMiddleware);
 
 // Express Routers
