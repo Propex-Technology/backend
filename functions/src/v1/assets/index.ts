@@ -1,7 +1,7 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
-import { firestore } from "firebase-admin";
 import { checkIfAssetExists } from "./checkIfAssetExists";
+import { checkIfUserExists } from "../users/checkIfUserExists";
 
 const Router: express.Router = express.Router();
 
@@ -181,23 +181,17 @@ Router.post("/reserveForPurchase",
     const assetId: number = parseInt(req.params.assetId);
     const amount: number = parseInt(req.params.amount);
 
-    if (isNaN(assetId)) {
-      res.status(400).json({ success: false, error: "Invalid assetId." });
-      return;
-    }
-    if (isNaN(amount)) {
-      res.status(400).json({ success: false, error: "Invalid amount." });
-      return;
-    }
+    if (isNaN(assetId))
+      return res.status(400).json({ success: false, error: "Invalid assetId." });
+    if (isNaN(amount))
+      return res.status(400).json({ success: false, error: "Invalid amount." });
 
     const assetCheck = await checkIfAssetExists(assetId);
-    if (!assetCheck.returnedTrue) {
-      res.status(400)
+    if (!assetCheck.returnedTrue)
+      return res.status(400)
         .json({ success: false, error: "Queried assetId does not exist." });
-      return;
-    }
 
-    // Assert that the user exists.
+    // Assert that the user exists. (TODO: turn into middleware)
     const authToken = req.get("authorization");
     if (authToken == null) {
       return res.status(403).json({
@@ -208,8 +202,21 @@ Router.post("/reserveForPurchase",
     const authVerification = await admin.auth().verifyIdToken(authToken);
     const userId = authVerification.uid;
 
-    // TODO: assert that user is authenticated & has KYC
-
+    // Assert that user has KYC
+    const ue = await checkIfUserExists(userId);
+    if(!ue.returnedTrue) {
+      return res.status(403).json({
+        success: false,
+        error: "User does not exist.",
+      });
+    }
+    else if(ue.userDoc.data()?.kycStatus !== "complete") {
+      return res.status(403).json({
+        success: false,
+        error: "User did not complete KYC.",
+      });
+    }
+    
     // Attempt, in transaction, to purchase.
     let attempts: number = 0;
     do {

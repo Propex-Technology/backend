@@ -1,27 +1,12 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
-import devKeys from "../devKeys";
+import devKeys from "../../devKeys";
 import axios from "axios";
+import { checkIfUserExists } from "./checkIfUserExists";
 
 const Router: express.Router = express.Router();
 
-const USERS_COLLECTION = "users";
-
-// #region Helper Functions
-// Feel free to move this into its own file if you feel that it is necessary.
-
-/**
- * Checks to see if a user document exists.
- * @param {number} userId The uid of the user.
- * @return {{returnedTrue: boolean, userDoc: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>}}
- * returnedTrue: if the user document exists, user: the user's snapshot if it exists.
- */
-async function checkIfUserExists(userId: string) {
-  const db = admin.firestore();
-  const assetRef = db.collection(USERS_COLLECTION).doc(userId);
-  const userSnapshot = await assetRef.get();
-  return {returnedTrue: userSnapshot.exists, userDoc: userSnapshot};
-}
+export const USERS_COLLECTION = "users";
 
 // Gets a user's data by looking at the request's auth token.
 Router.get("/get/",
