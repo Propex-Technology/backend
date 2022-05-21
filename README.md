@@ -47,6 +47,12 @@ Emulator data is not stored in the repository, and should not be.
 It can be tricky using Express if you aren't used to it. Fortunately, the 
 [docs](https://expressjs.com/en/api) are readable enough. 
 
+## Deploying
+There are two firebase projects that we're deploying to. Staging and production. To switch 
+between the two, you can use `firebase use propex-staging` for the staging project, and 
+`firebase use propex-production` for the production project.  
+For deploying in general, use `firebase deploy`.
+
 ### Minor Notes
 You should expect emulator routes to be under 
 `http://localhost:5001/propex-staging/us-central1/VERSION_NUMBER/ROUTE`.

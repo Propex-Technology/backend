@@ -2,7 +2,7 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import devKeys from "../../devKeys";
 import axios from "axios";
-import { checkIfUserExists } from "./checkIfUserExists";
+import {checkIfUserExists} from "./checkIfUserExists";
 
 const Router: express.Router = express.Router();
 

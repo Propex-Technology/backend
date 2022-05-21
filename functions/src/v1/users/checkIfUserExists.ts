@@ -1,5 +1,5 @@
 import * as admin from "firebase-admin";
-import { USERS_COLLECTION } from "./index";
+import {USERS_COLLECTION} from "./index";
 
 // #region Helper Functions
 // Feel free to move this into its own file if you feel that it is necessary.
@@ -13,5 +13,5 @@ export async function checkIfUserExists(userId: string) {
   const db = admin.firestore();
   const assetRef = db.collection(USERS_COLLECTION).doc(userId);
   const userSnapshot = await assetRef.get();
-  return { returnedTrue: userSnapshot.exists, userDoc: userSnapshot };
+  return {returnedTrue: userSnapshot.exists, userDoc: userSnapshot};
 }
