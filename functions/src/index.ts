@@ -3,13 +3,21 @@ import * as admin from "firebase-admin";
 import * as cors from "cors";
 import * as functions from "firebase-functions";
 import helmet from "helmet";
-// import { validationErrorMiddleware } from "./middleware/schemaValidation";
+import Moralis from "moralis/node";
+import keys from "./devKeys";
 
 // Routers
 import assets from "./v1/assets";
 import users from "./v1/users";
 
-// Firebase
+// Initialize Moralis
+Moralis.start({ 
+  serverUrl: keys.moralisServerUrl, 
+  appId: keys.moralisAppId, 
+  masterKey: keys.moralisMasterKey 
+});
+
+// Initialize Firebase
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
 });
