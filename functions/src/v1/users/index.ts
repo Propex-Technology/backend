@@ -29,7 +29,7 @@ Router.get("/get/",
       // 3a. If data does exist, return it
       if (userCheck.returnedTrue) {
         console.log("User preexisted");
-        res.status(200).json({success: true, ...userCheck.userDoc.data()});
+        res.status(200).json({success: true, ...userCheck.userDoc?.data()});
       }
       // 3b. If data doesn't exist, then create a new document & return it
       else {
@@ -107,7 +107,7 @@ Router.get("/get/verifyKYC/",
       const userCheck = await checkIfUserExists(userId);
       // 3a. If data does exist, begin KYC check.
       if (userCheck.returnedTrue) {
-        const userData = userCheck.userDoc.data();
+        const userData = userCheck.userDoc?.data();
 
         // No need to begin KYC check if the status is already complete.
         if (userData?.kycStatus === "complete") {

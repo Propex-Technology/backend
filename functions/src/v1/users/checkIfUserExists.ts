@@ -60,6 +60,7 @@ export async function checkIfUserExistsFromAuthToken(
         error: "You do not have permisson.",
       });
     }
+    return { returnedTrue: false, userId, userDoc: userCheck.userDoc };
   }
 
   return { ...userCheck, userId: userId }

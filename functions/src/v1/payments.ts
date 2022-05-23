@@ -29,6 +29,7 @@ Router.post("/issuePayment",
     const userCheck = await checkIfUserExistsFromAuthToken(req, res, 
       async (data) => data.userDoc !== undefined && data.userDoc.data()?.isAdmin === true
     );
+    if(!userCheck.returnedTrue) return;
 
     // 2. Get & parse data
     const assetId: number = parseInt(req.body.assetId);
@@ -74,7 +75,7 @@ Router.post("/issuePayment",
     }
 
 
-    // 7. Distribute cash to each NFT owner via batched write.
+    // 5. Distribute cash to each NFT owner via batched write.
     const bal = db.collection(BALANCES_COLLECTION);
     let totalWritten = 0, transactionHistory: Array<TransactionLog> = [];
     while (totalWritten < owners.length) {
