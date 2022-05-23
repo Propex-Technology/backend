@@ -210,7 +210,7 @@ Router.post("/reserveForPurchase",
           error: "User does not exist.",
         });
       }
-      else if (ue.userDoc.data()?.kycStatus !== "complete") {
+      else if (ue.userDoc?.data()?.kycStatus !== "complete") {
         return res.status(403).json({
           success: false,
           error: "User did not complete KYC.",

@@ -1,6 +1,6 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
-//import { checkIfUserExists } from "./users/checkIfUserExists";
+import { checkIfUserExistsFromAuthToken } from "./users/checkIfUserExists";
 import { checkIfAssetExists } from "./assets/checkIfAssetExists";
 const Moralis = require('moralis/node');
 //import Moralis from 'moralis/node';
@@ -9,34 +9,28 @@ const Moralis = require('moralis/node');
 const Router: express.Router = express.Router();
 
 const BALANCES_COLLECTION = 'balances';
+const DISTRIBUTION_HISTORY_COLLECTION = 'distribution_history';
+const TRANSACTION_HISTORY_COLLECTION = 'transaction_history';
+
+type TransactionLog = {
+  distributionId?: string,
+  walletAddress: string,
+  amount: number, 
+  date: number, 
+  assetId: number,
+  assetQuantity: number,
+}
 
 // Gets a user's data by looking at the request's auth token.
 Router.post("/issuePayment",
   async function (req: express.Request, res: express.Response) {
-    /*
-    // 1. Check if authentication exists
-    const authToken = req.get("authorization");
-    if (authToken == null) {
-      return res.status(403).json({
-        success: false,
-        error: "You do not have permisson.",
-      });
-    }
 
-    // 2. Get user from auth token.
-    const authVerification = await admin.auth().verifyIdToken(authToken);
-    const userId = authVerification.uid;
+    // 1. Fetch data & authenticate that user is admin
+    const userCheck = await checkIfUserExistsFromAuthToken(req, res, 
+      async (data) => data.userDoc !== undefined && data.userDoc.data()?.isAdmin === true
+    );
 
-    // 3. Fetch data & authenticate that user is admin
-    const userCheck = await checkIfUserExists(userId);
-    if (!userCheck.returnedTrue || userCheck.userDoc.data()?.isAdmin !== true) {
-      return res.status(403).json({
-        success: false,
-        error: "You do not have permisson.",
-      });
-    }*/
-
-    // 4. Get & parse data
+    // 2. Get & parse data
     const assetId: number = parseInt(req.body.assetId);
     const amount: number = parseFloat(req.body.amount);
     const currency: string = req.body.currency;
@@ -48,7 +42,7 @@ Router.post("/issuePayment",
     const assetAddress = assetCheck.asset.docs[0].data().contractAddress;
     if (assetAddress == null) { return res.status(400).json({ success: false, error: "Asset has no contract." }); }
 
-    // 5. Take snapshot of NFT owners.
+    // 3. Take snapshot of NFT owners.
     const nftOwnership = await Moralis.Web3API.token.getNFTOwners({
       chain: process.env.NODE_ENV == "development" ? "mumbai" : "polygon",
       address: assetAddress,
@@ -61,46 +55,52 @@ Router.post("/issuePayment",
     });
     const totalTokens: number = nftOwnership.total;
 
-    // 6. Distribute cash to each NFT owner via batched write.
+    // 4. Begin log
     const db = admin.firestore();
-    const bal = db.collection(BALANCES_COLLECTION);
     const owners = Object.keys(ownersToCount);
-    let totalWritten = 0;
+    let distributionId = "";
+    try {
+      const newDistributionLog = await db.collection(DISTRIBUTION_HISTORY_COLLECTION).add({
+        assetId: assetId,
+        amount: amount,
+        ownerCount: owners.length,
+        date: Date.now(),
+        issuer: userCheck?.userId
+      });
+      distributionId = newDistributionLog.id;
+    }
+    catch {
+      return res.status(500).json({ success: false, error: 'Error with beginning log.' });
+    }
+
+
+    // 7. Distribute cash to each NFT owner via batched write.
+    const bal = db.collection(BALANCES_COLLECTION);
+    let totalWritten = 0, transactionHistory: Array<TransactionLog> = [];
     while (totalWritten < owners.length) {
       await db.runTransaction(async (t) => {
-        // a. Predetermine how many reads+writes are necessary.
-        //    (500 max operations, 250 max read+writes).
-        let numReadWrites = 0;
-        if(owners.length > 250 + totalWritten) numReadWrites = 250;
-        else numReadWrites = owners.length - totalWritten;
-
-        // b. Read all documents.
-        const readDocs = [];
-        for(let r = 0; r < numReadWrites; r++) {
-          const owner = owners[totalWritten + r];
-          readDocs[r] = await t.get(bal.doc(owner));
-        }
-
-        // c. Write all documents.
-        for(let w = 0; w < numReadWrites; w++) {
-          const owner = owners[totalWritten + w];
+        for(let w = 0; w < 500 && totalWritten < owners.length; w++, totalWritten++) {
+          const owner = owners[totalWritten];
           const portion = amount * (ownersToCount[owner] / totalTokens);
-          console.log(portion, amount, ownersToCount[owner], totalTokens);
-
+          const incr = admin.firestore.FieldValue.increment(portion);
           const docRef = bal.doc(owner);
-          const doc = readDocs[w];
-          if(!doc.exists) t.set(docRef, { [currency]: portion });
-          else if (doc.data()?.[currency] == null) t.update(docRef, { [currency]: portion });
-          else {
-            const incr = admin.firestore.FieldValue.increment(portion);
-            t.update(bal.doc(owner), { [currency]: incr });
-          }
+          t.set(docRef, { [currency]: incr }, { merge: true });
+          transactionHistory.push({ 
+            distributionId,
+            walletAddress: owner,
+            amount: portion, 
+            date: Date.now(), 
+            assetId: assetId,
+            assetQuantity: ownersToCount[owner]
+          });
         }
-
-        // d. Add total amount of read + writes.
-        totalWritten += numReadWrites;
       });
     }
+
+    // 8. Transaction logging.
+    transactionHistory.forEach(transaction => 
+      db.collection(TRANSACTION_HISTORY_COLLECTION).add(transaction)
+    );
 
     return res.status(200).json({ success: true });
   });
