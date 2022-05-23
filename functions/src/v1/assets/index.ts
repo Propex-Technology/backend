@@ -178,8 +178,8 @@ Router.get("/get/shortlist/:limit/:offset",
 
 Router.post("/reserveForPurchase",
     async function(req: express.Request, res: express.Response) {
-      const assetId: number = parseInt(req.params.assetId);
-      const amount: number = parseInt(req.params.amount);
+      const assetId: number = parseInt(req.body.assetId);
+      const amount: number = parseInt(req.body.amount);
 
       if (isNaN(assetId))
       {return res.status(400).json({success: false, error: "Invalid assetId."});}
@@ -229,7 +229,7 @@ Router.post("/reserveForPurchase",
           await db.runTransaction(async (t) => {
           // 1. Get the data.
             const doc = await t.get(primaryRef);
-            const data: PrimaryOffering = await doc.data() as PrimaryOffering;
+            const data: PrimaryOffering = doc.data() as PrimaryOffering;
 
             // 2. If there is space, continue. Else return.
             if (data.tokensLeft < amount) {
