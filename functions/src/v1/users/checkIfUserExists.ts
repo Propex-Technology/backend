@@ -1,5 +1,5 @@
 import * as admin from "firebase-admin";
-import { USERS_COLLECTION } from "./index";
+import {USERS_COLLECTION} from "./index";
 import * as express from "express";
 
 type UserCheck = {
@@ -20,19 +20,19 @@ export async function checkIfUserExists(userId: string): Promise<UserCheck> {
   const db = admin.firestore();
   const assetRef = db.collection(USERS_COLLECTION).doc(userId);
   const userSnapshot = await assetRef.get();
-  return { returnedTrue: userSnapshot.exists, userDoc: userSnapshot };
+  return {returnedTrue: userSnapshot.exists, userDoc: userSnapshot};
 }
 
 /**
  * Checks to see if a user document exists from a request's auth token.
  * @param {express.Request} req The request object of the route.
  * @param {express.Response} res The response object of the route.
- * @returns {Promise<UserCheckFromAuthToken>} Information about user.
+ * @return {Promise<UserCheckFromAuthToken>} Information about user.
  */
 export async function checkIfUserExistsFromAuthToken(
-  req: express.Request,
-  res: express.Response,
-  additionalCheck: undefined | ((data: UserCheckFromAuthToken) => Promise<boolean>) = undefined):
+    req: express.Request,
+    res: express.Response,
+    additionalCheck: undefined | ((data: UserCheckFromAuthToken) => Promise<boolean>) = undefined):
   Promise<UserCheckFromAuthToken> {
   // 1. Check if authentication exists
   const authToken = req.get("authorization");
@@ -41,7 +41,7 @@ export async function checkIfUserExistsFromAuthToken(
       success: false,
       error: "You do not have permisson.",
     });
-    return { returnedTrue: false, userDoc: undefined, userId: "" };
+    return {returnedTrue: false, userDoc: undefined, userId: ""};
   }
 
   // 2. Get user from auth token.
@@ -53,16 +53,16 @@ export async function checkIfUserExistsFromAuthToken(
 
   // 4. Run additional check if applicable.
   if (additionalCheck !== undefined) {
-    const pass = await additionalCheck({ ...userCheck, userId });
+    const pass = await additionalCheck({...userCheck, userId});
     if (!pass) {
       res.status(403).json({
         success: false,
         error: "You do not have permisson.",
       });
     }
-    return { returnedTrue: false, userId, userDoc: userCheck.userDoc };
+    return {returnedTrue: false, userId, userDoc: userCheck.userDoc};
   }
 
-  return { ...userCheck, userId: userId }
+  return {...userCheck, userId: userId};
 }
 
