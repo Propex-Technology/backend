@@ -89,7 +89,6 @@ Router.get("/get/",
 // Also checks Persona API to verify that the user has been verified.
 Router.get("/get/verifyKYC/",
     async function(req: express.Request, res: express.Response) {
-      console.log("VERIFY KYC");
       // 1. Check if authentication exists
       const authToken = req.get("authorization");
       if (authToken == null) {
