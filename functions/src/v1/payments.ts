@@ -2,11 +2,10 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import { checkIfKYCExistsFromAuthToken, checkIfUserExistsFromAuthToken } from "./users/checkIfUserExists";
 import { checkIfAssetExists } from "./assets/checkIfAssetExists";
-const Moralis = require("moralis/node");
+//const Moralis = require("moralis/node");
+import Moralis from "moralis/node";
+import axios from "axios";
 import { recoverPersonalSignature } from "@metamask/eth-sig-util";
-import fetch from "node-fetch";
-// import Moralis from 'moralis/node';
-// import PropexDealNFT from "../abi/PropexDealNFT";
 
 const Router: express.Router = express.Router();
 
@@ -78,7 +77,10 @@ Router.post("/issuePayment",
       if (ownersToCount[owner] == null) ownersToCount[owner] = 1;
       else ownersToCount[owner] += 1;
     });
-    const totalTokens: number = nftOwnership.total;
+    const totalTokens = nftOwnership.total;
+    if (totalTokens === undefined) { 
+      return res.status(500).json({ success: false, error: "NFT returned an error." }); 
+    }
 
     // 4. Begin log
     const db = admin.firestore();
@@ -197,9 +199,8 @@ Router.post("/finalizeWithdraw",
       return res.status(400).json({ success: false, error: 'Nonce was not signed correctly.' });
 
     // 5. Check for the exchange rate before changing anything, if necessary.
-    const rates: ConversionRates = await
-      fetch('https://v6.exchangerate-api.com/v6/f9ff3bcf0d99af888b7cef73/latest/USD')
-        .then(response => response.json()) as ConversionRates;
+    const rates: ConversionRates = await axios
+      .get('https://v6.exchangerate-api.com/v6/f9ff3bcf0d99af888b7cef73/latest/USD') as ConversionRates;
     if (rates == null) return res.status(500)
       .json({ success: false, error: 'Error with fetching exchange rates.' });
 
@@ -235,14 +236,14 @@ Router.post("/finalizeWithdraw",
     // 7. Send the money via the requested method.
     const rate = rates.conversion_rates[withdrawData.currency];
     const usdToSend = withdrawData.amount / rate;
-    const options = {
-      type: "erc20",
-      amount: Moralis.Units.Token(usdToSend.toString(), "18"),
+    const options: Moralis.TransferOptions = {
+      type: 'erc20',
+      amount: Moralis.Units.Token(usdToSend.toString(), 18),
       receiver: address,
       contractAddress: "0x..",
     };
     await Moralis.transfer(options);
-    
+
     return res.status(200);
   }
 );

@@ -3,20 +3,13 @@ import * as admin from "firebase-admin";
 import * as cors from "cors";
 import * as functions from "firebase-functions";
 import helmet from "helmet";
-const Moralis = require("moralis/node");
 import keys from "./devKeys";
-
+//import Moralis from "moralis/node";
+const Moralis = require('moralis/node');
 // Routers
 import assets from "./v1/assets";
 import users from "./v1/users";
 import payments from "./v1/payments";
-
-// Initialize Moralis
-Moralis.start({
-  serverUrl: keys.moralisServerUrl,
-  appId: keys.moralisAppId,
-  masterKey: keys.moralisMasterKey,
-});
 
 // Initialize Firebase
 admin.initializeApp({
@@ -40,9 +33,24 @@ app.use(cors());
 app.use(express.json());
 // app.use(validationErrorMiddleware);
 
-// Express Routers
-app.use("/assets", assets);
-app.use("/users", users);
-app.use("/payments", payments);
+const asyncSetup = async () => {
+  // Moralis setup
+  await Moralis.start({
+    //serverUrl: keys.moralisServerUrl,
+    //appId: keys.moralisAppId,
+    //masterKey: keys.moralisServerMasterKey,
+    moralisSecret: keys.moralisSecret
+  });
+  await Moralis.enableWeb3({
+    privateKey: keys.accountKey,
+    chainId: 80001
+  });
+
+  // Express Routers
+  app.use("/assets", assets);
+  app.use("/users", users);
+  app.use("/payments", payments);
+}
+asyncSetup();
 
 export const v1: functions.HttpsFunction = functions.https.onRequest(app);
