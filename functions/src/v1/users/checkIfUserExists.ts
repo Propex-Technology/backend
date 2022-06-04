@@ -31,12 +31,13 @@ export async function checkIfUserExists(userId: string): Promise<UserCheck> {
  */
 export async function checkIfUserExistsFromAuthToken(
   req: express.Request,
-  res: express.Response,
-  additionalCheck: undefined | ((data: UserCheckFromAuthToken) => Promise<boolean>) = undefined):
+  res: express.Response) :
   Promise<UserCheckFromAuthToken> {
   // 1. Check if authentication exists
+  console.log('starting authentication check');
   const authToken = req.get("authorization");
   if (authToken == null) {
+    console.log('auth token not found');
     res.status(403).json({
       success: false,
       error: "You do not have permisson.",
@@ -45,23 +46,13 @@ export async function checkIfUserExistsFromAuthToken(
   }
 
   // 2. Get user from auth token.
+  console.log('getting user from auth token');
   const authVerification = await admin.auth().verifyIdToken(authToken);
   const userId = authVerification.uid;
 
   // 3. Fetch data & authenticate that user is admin
+  console.log('checking user existence');
   const userCheck = await checkIfUserExists(userId);
-
-  // 4. Run additional check if applicable.
-  if (additionalCheck !== undefined) {
-    const pass = await additionalCheck({ ...userCheck, userId });
-    if (!pass) {
-      res.status(403).json({
-        success: false,
-        error: "You do not have permisson.",
-      });
-    }
-    return { returnedTrue: false, userId, userDoc: userCheck.userDoc };
-  }
 
   return { ...userCheck, userId: userId };
 }

@@ -2,8 +2,8 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import { checkIfKYCExistsFromAuthToken, checkIfUserExistsFromAuthToken } from "./users/checkIfUserExists";
 import { checkIfAssetExists } from "./assets/checkIfAssetExists";
-//const Moralis = require("moralis/node");
-import Moralis from "moralis/node";
+const Moralis = require("moralis/node");
+//import Moralis from "moralis/node";
 import axios from "axios";
 import { recoverPersonalSignature } from "@metamask/eth-sig-util";
 
@@ -49,10 +49,14 @@ type ConversionRates = {
 Router.post("/issuePayment",
   async function (req: express.Request, res: express.Response) {
     // 1. Fetch data & authenticate that user is admin
-    const userCheck = await checkIfUserExistsFromAuthToken(req, res,
-      async (data) => data.userDoc !== undefined && data.userDoc.data()?.isAdmin === true
-    );
+    const userCheck = await checkIfUserExistsFromAuthToken(req, res);
     if (!userCheck.returnedTrue) return;
+    if (userCheck.userDoc == null || userCheck.userDoc.data()?.isAdmin !== true) {
+      res.status(403).json({
+        success: false,
+        error: "You do not have permisson.",
+      });
+    }
 
     // 2. Get & parse data
     const assetId: number = parseInt(req.body.assetId);
@@ -78,8 +82,8 @@ Router.post("/issuePayment",
       else ownersToCount[owner] += 1;
     });
     const totalTokens = nftOwnership.total;
-    if (totalTokens === undefined) { 
-      return res.status(500).json({ success: false, error: "NFT returned an error." }); 
+    if (totalTokens === undefined) {
+      return res.status(500).json({ success: false, error: "NFT returned an error." });
     }
 
     // 4. Begin log
@@ -100,7 +104,6 @@ Router.post("/issuePayment",
     catch {
       return res.status(500).json({ success: false, error: "Error with beginning log." });
     }
-
 
     // 5. Distribute cash to each NFT owner via batched write.
     const bal = db.collection(BALANCES_COLLECTION);
@@ -126,7 +129,7 @@ Router.post("/issuePayment",
       });
     }
 
-    // 8. Transaction logging.
+    // 6. Transaction logging.
     transactionHistory.forEach((transaction) =>
       db.collection(TRANSACTION_HISTORY_COLLECTION).add(transaction)
     );
@@ -236,7 +239,7 @@ Router.post("/finalizeWithdraw",
     // 7. Send the money via the requested method.
     const rate = rates.conversion_rates[withdrawData.currency];
     const usdToSend = withdrawData.amount / rate;
-    const options: Moralis.TransferOptions = {
+    const options = { //: Moralis.TransferOptions = {
       type: 'erc20',
       amount: Moralis.Units.Token(usdToSend.toString(), 18),
       receiver: address,
