@@ -33,7 +33,7 @@ type WithdrawRequest = {
   nonce: number
 }
 
-type UserBalance = {
+export type UserBalance = {
   USD?: number,
   GBP?: number,
   EUR?: number
@@ -111,7 +111,7 @@ Router.post("/issuePayment",
     while (totalWritten < owners.length) {
       await db.runTransaction(async (t) => {
         for (let w = 0; w < 500 && totalWritten < owners.length; w++, totalWritten++) {
-          const owner = owners[totalWritten];
+          const owner = owners[totalWritten].toLowerCase();
           const portion = amount * (ownersToCount[owner] / totalTokens);
           const incr = admin.firestore.FieldValue.increment(portion);
           const docRef = bal.doc(owner);
@@ -130,9 +130,9 @@ Router.post("/issuePayment",
     }
 
     // 6. Transaction logging.
-    transactionHistory.forEach((transaction) =>
-      db.collection(TRANSACTION_HISTORY_COLLECTION).add(transaction)
-    );
+    for(let i = 0; i < transactionHistory.length; i++) {
+      await db.collection(TRANSACTION_HISTORY_COLLECTION).add(transactionHistory[i]);
+    }
 
     return res.status(200).json({ success: true });
   });
