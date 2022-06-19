@@ -28,7 +28,9 @@ module.exports = {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
     "new-cap": 0,
-    "max-len": [1, {"ignoreComments": true}],
+    "max-len": [0, {"ignoreComments": true}],
     "brace-style": "off",
+    "camelcase": 0,
+    "@typescript-eslint/no-var-requires": 0,
   },
 };

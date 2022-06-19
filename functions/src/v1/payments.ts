@@ -3,9 +3,11 @@ import * as admin from "firebase-admin";
 import { checkIfKYCExistsFromAuthToken, checkIfUserExistsFromAuthToken } from "./users/checkIfUserExists";
 import { checkIfAssetExists } from "./assets/checkIfAssetExists";
 const Moralis = require("moralis/node");
+import { ethers, BigNumber } from "ethers";
 //import Moralis from "moralis/node";
 import axios from "axios";
 import { recoverPersonalSignature } from "@metamask/eth-sig-util";
+import ISnapshotEnumerable from '../abi/ISnapshotEnumerable';
 
 const Router: express.Router = express.Router();
 
@@ -45,10 +47,12 @@ type ConversionRates = {
   conversion_rates: { [name: string]: number }
 }
 
+// TODO: change issuePayment so that it is a firebase function
 // Gets a user's data by looking at the request's auth token.
 Router.post("/issuePayment",
   async function (req: express.Request, res: express.Response) {
     // 1. Fetch data & authenticate that user is admin
+
     const userCheck = await checkIfUserExistsFromAuthToken(req, res);
     if (!userCheck.returnedTrue) return;
     if (userCheck.userDoc == null || userCheck.userDoc.data()?.isAdmin !== true) {
@@ -71,31 +75,31 @@ Router.post("/issuePayment",
     if (assetAddress == null) { return res.status(400).json({ success: false, error: "Asset has no contract." }); }
 
     // 3. Take snapshot of NFT owners.
-    const nftOwnership = await Moralis.Web3API.token.getNFTOwners({
-      chain: process.env.NODE_ENV == "development" ? "mumbai" : "polygon",
-      address: assetAddress,
-    });
-    const ownersToCount: { [key: string]: number } = {};
-    nftOwnership.result?.forEach((nft: { owner_of: string; }) => {
-      const owner = nft.owner_of;
-      if (ownersToCount[owner] == null) ownersToCount[owner] = 1;
-      else ownersToCount[owner] += 1;
-    });
-    const totalTokens = nftOwnership.total;
-    if (totalTokens === undefined) {
-      return res.status(500).json({ success: false, error: "NFT returned an error." });
-    }
+    const isDevelopment = process.env.NODE_ENV == "development";
+    let provider = new ethers.providers.JsonRpcProvider(
+      isDevelopment ?
+        "https://speedy-nodes-nyc.moralis.io/b680024dbed9da365ece429e/polygon/mumbai" :
+        "https://speedy-nodes-nyc.moralis.io/b680024dbed9da365ece429e/polygon/mainnet",
+      isDevelopment ? "maticmum" : "matic"
+    );
+    const dealERC = new ethers.Contract(assetAddress, ISnapshotEnumerable.abi, provider)
+    const ownerCount: number = (await dealERC.entriesInLastSnapshot()).toNumber();
+    const snapshot: { 0: Array<string>, 1: Array<BigNumber> } =
+      await dealERC.entriesFromLastSnapshot(0, ownerCount);
+    const ownersArr: Array<string> = snapshot[0];
+    const tokenAmountArr: Array<BigNumber> = snapshot[1];
 
-    // 4. Begin log
+    const totalTokens = tokenAmountArr.reduce((a, b) => a.add(b)).toNumber();
+
+    // 4. Begin distribution log
     const db = admin.firestore();
-    const owners = Object.keys(ownersToCount);
     let distributionId = "";
     try {
       const newDistributionLog = await db.collection(DISTRIBUTION_HISTORY_COLLECTION).add({
         assetId,
         amount,
         currency,
-        ownerCount: owners.length,
+        ownerCount: ownerCount,
         date: Date.now(),
         issuer: userCheck?.userId,
       });
@@ -108,11 +112,12 @@ Router.post("/issuePayment",
     // 5. Distribute cash to each NFT owner via batched write.
     const bal = db.collection(BALANCES_COLLECTION);
     let totalWritten = 0; const transactionHistory: Array<TransactionLog> = [];
-    while (totalWritten < owners.length) {
+    while (totalWritten < ownerCount) {
       await db.runTransaction(async (t) => {
-        for (let w = 0; w < 500 && totalWritten < owners.length; w++, totalWritten++) {
-          const owner = owners[totalWritten].toLowerCase();
-          const portion = amount * (ownersToCount[owner] / totalTokens);
+        for (let w = 0; w < 500 && totalWritten < ownersArr.length; w++, totalWritten++) {
+          const owner = ownersArr[totalWritten].toLowerCase();
+          const ownerTokenCount = tokenAmountArr[totalWritten].toNumber()
+          const portion = amount * (ownerTokenCount / totalTokens);
           const incr = admin.firestore.FieldValue.increment(portion);
           const docRef = bal.doc(owner);
           t.set(docRef, { [currency]: incr }, { merge: true });
@@ -123,20 +128,21 @@ Router.post("/issuePayment",
             amount: portion,
             date: Date.now(),
             assetId: assetId,
-            assetQuantity: ownersToCount[owner],
+            assetQuantity: ownerTokenCount,
           });
         }
       });
     }
 
     // 6. Transaction logging.
-    for(let i = 0; i < transactionHistory.length; i++) {
+    for (let i = 0; i < transactionHistory.length; i++) {
       await db.collection(TRANSACTION_HISTORY_COLLECTION).add(transactionHistory[i]);
     }
 
     return res.status(200).json({ success: true });
   });
 
+// Asks for a withdraw nonce
 Router.post("/withdrawNonce",
   async function (req: express.Request, res: express.Response) {
     // 1. Fetch data & authenticate that user is authenticated
@@ -198,14 +204,15 @@ Router.post("/finalizeWithdraw",
     const allSameAddresses =
       withdrawData.address.toLowerCase() === recoveredAddress.toLowerCase() &&
       withdrawData.address.toLowerCase() === address.toLowerCase();
-    if (!allSameAddresses)
-      return res.status(400).json({ success: false, error: 'Nonce was not signed correctly.' });
+    if (!allSameAddresses) { return res.status(400).json({ success: false, error: "Nonce was not signed correctly." }); }
 
     // 5. Check for the exchange rate before changing anything, if necessary.
     const rates: ConversionRates = await axios
-      .get('https://v6.exchangerate-api.com/v6/f9ff3bcf0d99af888b7cef73/latest/USD') as ConversionRates;
-    if (rates == null) return res.status(500)
-      .json({ success: false, error: 'Error with fetching exchange rates.' });
+      .get("https://v6.exchangerate-api.com/v6/f9ff3bcf0d99af888b7cef73/latest/USD") as ConversionRates;
+    if (rates == null) {
+      return res.status(500)
+        .json({ success: false, error: "Error with fetching exchange rates." });
+    }
 
     // 6. Use a transaction & make sure to log it.
     // TODO: check to make sure that the error throwing works
@@ -239,8 +246,8 @@ Router.post("/finalizeWithdraw",
     // 7. Send the money via the requested method.
     const rate = rates.conversion_rates[withdrawData.currency];
     const usdToSend = withdrawData.amount / rate;
-    const options = { //: Moralis.TransferOptions = {
-      type: 'erc20',
+    const options = { // : Moralis.TransferOptions = {
+      type: "erc20",
       amount: Moralis.Units.Token(usdToSend.toString(), 18),
       receiver: address,
       contractAddress: "0x..",

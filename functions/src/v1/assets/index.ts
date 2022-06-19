@@ -192,7 +192,7 @@ Router.post("/reserveForPurchase",
           .json({success: false, error: "Queried assetId does not exist."});}
 
       // Assert that the user exists. (TODO: turn into middleware)
-      const authToken = req.get("authorization");
+      const authToken = req.get("Authorization");
       if (authToken == null) {
         return res.status(403).json({
           success: false,
@@ -305,7 +305,7 @@ if (process.env.NODE_ENV == "development") {
 
         const oldData = assetCheck.asset.docs[0].data();
         const db = admin.firestore();
-        db.collection(ASSETS_COLLECTION).add(oldData);
+        await db.collection(ASSETS_COLLECTION).doc(assetId.toString()).create(oldData);
 
         res.status(200).json({success: true});
       });

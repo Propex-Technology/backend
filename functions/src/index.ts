@@ -4,8 +4,8 @@ import * as cors from "cors";
 import * as functions from "firebase-functions";
 import helmet from "helmet";
 import keys from "./devKeys";
-//import Moralis from "moralis/node";
-const Moralis = require('moralis/node');
+// import Moralis from "moralis/node";
+const Moralis = require("moralis/node");
 // Routers
 import assets from "./v1/assets";
 import users from "./v1/users";
@@ -36,21 +36,23 @@ app.use(express.json());
 const asyncSetup = async () => {
   // Moralis setup
   await Moralis.start({
-    //serverUrl: keys.moralisServerUrl,
-    //appId: keys.moralisAppId,
-    //masterKey: keys.moralisServerMasterKey,
-    moralisSecret: keys.moralisSecret
+    // serverUrl: keys.moralisServerUrl,
+    // appId: keys.moralisAppId,
+    // masterKey: keys.moralisServerMasterKey,
+    moralisSecret: keys.moralisSecret,
   });
   await Moralis.enableWeb3({
     privateKey: keys.accountKey,
-    chainId: 80001
+    chainId: 80001,
   });
 
   // Express Routers
   app.use("/assets", assets);
   app.use("/users", users);
   app.use("/payments", payments);
-}
+};
 asyncSetup();
 
-export const v1: functions.HttpsFunction = functions.https.onRequest(app);
+export const v1: functions.HttpsFunction = functions
+  .runWith({ timeoutSeconds: 180 })
+  .https.onRequest(app);

@@ -1,5 +1,5 @@
 import * as admin from "firebase-admin";
-import { USERS_COLLECTION } from "./index";
+import {USERS_COLLECTION} from "./index";
 import * as express from "express";
 
 type UserCheck = {
@@ -20,7 +20,7 @@ export async function checkIfUserExists(userId: string): Promise<UserCheck> {
   const db = admin.firestore();
   const assetRef = db.collection(USERS_COLLECTION).doc(userId);
   const userSnapshot = await assetRef.get();
-  return { returnedTrue: userSnapshot.exists, userDoc: userSnapshot };
+  return {returnedTrue: userSnapshot.exists, userDoc: userSnapshot};
 }
 
 /**
@@ -30,31 +30,31 @@ export async function checkIfUserExists(userId: string): Promise<UserCheck> {
  * @return {Promise<UserCheckFromAuthToken>} Information about user.
  */
 export async function checkIfUserExistsFromAuthToken(
-  req: express.Request,
-  res: express.Response) :
+    req: express.Request,
+    res: express.Response) :
   Promise<UserCheckFromAuthToken> {
   // 1. Check if authentication exists
-  console.log('starting authentication check');
-  const authToken = req.get("authorization");
+  console.log("starting authentication check");
+  const authToken = req.get("Authorization");
   if (authToken == null) {
-    console.log('auth token not found');
+    console.log("auth token not found");
     res.status(403).json({
       success: false,
       error: "You do not have permisson.",
     });
-    return { returnedTrue: false, userDoc: undefined, userId: "" };
+    return {returnedTrue: false, userDoc: undefined, userId: ""};
   }
 
   // 2. Get user from auth token.
-  console.log('getting user from auth token');
+  console.log("getting user from auth token");
   const authVerification = await admin.auth().verifyIdToken(authToken);
   const userId = authVerification.uid;
 
   // 3. Fetch data & authenticate that user is admin
-  console.log('checking user existence');
+  console.log("checking user existence");
   const userCheck = await checkIfUserExists(userId);
 
-  return { ...userCheck, userId: userId };
+  return {...userCheck, userId: userId};
 }
 
 /**
@@ -64,18 +64,17 @@ export async function checkIfUserExistsFromAuthToken(
  * @return {Promise<UserCheckFromAuthToken>} Information about user.
  */
 export async function checkIfKYCExistsFromAuthToken(
-  req: express.Request,
-  res: express.Response,
-  additionalCheck: undefined | ((data: UserCheckFromAuthToken) => Promise<boolean>) = undefined):
+    req: express.Request,
+    res: express.Response):
   Promise<UserCheckFromAuthToken> {
   // 1. Check if authentication exists
-  const authToken = req.get("authorization");
+  const authToken = req.get("Authorization");
   if (authToken == null) {
     res.status(403).json({
       success: false,
       error: "You do not have permisson.",
     });
-    return { returnedTrue: false, userDoc: undefined, userId: "" };
+    return {returnedTrue: false, userDoc: undefined, userId: ""};
   }
 
   // 2. Get user from auth token.
@@ -85,24 +84,12 @@ export async function checkIfKYCExistsFromAuthToken(
   // 3. Fetch data & authenticate that user is KYC compliant.
   // NOTE: 'complete' may not be the correct status. May be 'approved'
   const userCheck = await checkIfUserExists(userId);
-  if(userCheck.userDoc?.data()?.kycStatus !== 'complete') {
+  if (userCheck.userDoc?.data()?.kycStatus !== "complete") {
     res.status(403).json({
       success: false,
-      error: 'KYC has not been completed.'
+      error: "KYC has not been completed.",
     });
   }
 
-  // 5. Run additional check if applicable.
-  if (additionalCheck !== undefined) {
-    const pass = await additionalCheck({ ...userCheck, userId });
-    if (!pass) {
-      res.status(403).json({
-        success: false,
-        error: "You do not have permisson.",
-      });
-    }
-    return { returnedTrue: false, userId, userDoc: userCheck.userDoc };
-  }
-
-  return { ...userCheck, userId: userId };
+  return {...userCheck, userId: userId};
 }
