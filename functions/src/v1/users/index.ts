@@ -130,7 +130,6 @@ Router.get("/get/verifyKYC/",
           }
 
           const resData = axiosRes.data;
-          console.log(resData);
           const isCompleted = resData.data.some(
               (x: { attributes: { status: string; }; }) =>
                 x.attributes.status == "completed"
@@ -233,7 +232,6 @@ Router.get("/balances/:address",
       // For each token initially found, make sure the data is the same
       const tokenData: any[] = [];
       for (const t of tokenCount) {
-        console.log(t[0], assetData, t[1])
         if (assetData[t[0]].contractAddress.toLowerCase() === t[1].token_address.toLowerCase())
         {tokenData.push({...t[1], ...assetData[t[0]]});}
       }

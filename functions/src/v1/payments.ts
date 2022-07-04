@@ -8,6 +8,7 @@ import { ethers, BigNumber } from "ethers";
 import axios from "axios";
 import { recoverPersonalSignature } from "@metamask/eth-sig-util";
 import ISnapshotEnumerable from '../abi/ISnapshotEnumerable';
+import keys from '../devKeys';
 
 const Router: express.Router = express.Router();
 
@@ -78,8 +79,8 @@ Router.post("/issuePayment",
     const isDevelopment = process.env.NODE_ENV == "development";
     let provider = new ethers.providers.JsonRpcProvider(
       isDevelopment ?
-        "https://speedy-nodes-nyc.moralis.io/b680024dbed9da365ece429e/polygon/mumbai" :
-        "https://speedy-nodes-nyc.moralis.io/b680024dbed9da365ece429e/polygon/mainnet",
+        "https://polygon-testnet.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b" :
+        "https://polygon-mainnet.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b",
       isDevelopment ? "maticmum" : "matic"
     );
     const dealERC = new ethers.Contract(assetAddress, ISnapshotEnumerable.abi, provider)
@@ -175,19 +176,21 @@ Router.post("/withdrawNonce",
 
 Router.post("/finalizeWithdraw",
   async function (req: express.Request, res: express.Response) {
+    console.log("ITS HAPPENING");
+
     // 1. Fetch data & authenticate that user
     const userCheck = await checkIfKYCExistsFromAuthToken(req, res);
     if (!userCheck.returnedTrue) return;
 
     // 2. Check data.
-    const address: string = req.body.address;
+    const address: string = req.body.address?.toLowerCase();
     const signature: string = req.body.signature;
     const db = admin.firestore();
     const ref = db.collection(WITHDRAW_REQUEST_COLLECTION).doc(userCheck.userId);
 
     // 3. Check to ensure that wallet addresses are the same.
     const withdrawData: WithdrawRequest = (await ref.get()).data() as WithdrawRequest;
-    if (address.toLowerCase() !== withdrawData.address.toLowerCase()) {
+    if (address !== withdrawData.address.toLowerCase()) {
       return res.status(400).json({ success: false, error: "Addresses are not the same." });
     }
 
@@ -208,11 +211,13 @@ Router.post("/finalizeWithdraw",
 
     // 5. Check for the exchange rate before changing anything, if necessary.
     const rates: ConversionRates = await axios
-      .get("https://v6.exchangerate-api.com/v6/f9ff3bcf0d99af888b7cef73/latest/USD") as ConversionRates;
+      .get("https://v6.exchangerate-api.com/v6/f9ff3bcf0d99af888b7cef73/latest/USD")
+      .then(res => res.data) as ConversionRates;
     if (rates == null) {
       return res.status(500)
         .json({ success: false, error: "Error with fetching exchange rates." });
     }
+    console.log('rates', rates);
 
     // 6. Use a transaction & make sure to log it.
     // TODO: check to make sure that the error throwing works
@@ -220,10 +225,14 @@ Router.post("/finalizeWithdraw",
       await db.runTransaction(async (t) => {
         const balRef = db.collection(BALANCES_COLLECTION).doc(address);
         const userBalances = (await t.get(balRef)).data() as UserBalance;
+        console.log("balances", userBalances);
+        console.log("withdraw data", withdrawData);
         const balance = userBalances[withdrawData.currency] ?? 0;
-        if (withdrawData.amount < balance) throw Error();
+        if (withdrawData.amount > balance) throw Error();
 
+        console.log("Starting delete");
         t.delete(ref);
+        console.log("Starting update");
         t.update(balRef, {
           [withdrawData.currency]: balance - withdrawData.amount,
         });
@@ -236,6 +245,7 @@ Router.post("/finalizeWithdraw",
           date: Date.now(),
           currency: withdrawData.currency,
         };
+        console.log("Starting logging", trans);
         t.create(db.collection(TRANSACTION_HISTORY_COLLECTION).doc(), trans);
       });
     }
@@ -245,16 +255,19 @@ Router.post("/finalizeWithdraw",
 
     // 7. Send the money via the requested method.
     const rate = rates.conversion_rates[withdrawData.currency];
-    const usdToSend = withdrawData.amount / rate;
+    const usdToSend = (withdrawData.amount / rate).toFixed(6);
+
+    console.log("USD to send", usdToSend);
     const options = { // : Moralis.TransferOptions = {
       type: "erc20",
-      amount: Moralis.Units.Token(usdToSend.toString(), 18),
+      amount: Moralis.Units.Token(usdToSend.toString(), 6),
       receiver: address,
-      contractAddress: "0x..",
+      contractAddress: process.env.NODE_ENV == "development" ? keys.mumbaiUSDC : keys.polygonUSDC,
     };
-    await Moralis.transfer(options);
+    console.log("Moralis options", options);
+    const result = await Moralis.transfer(options);
 
-    return res.status(200);
+    return res.status(200).json(result);
   }
 );
 

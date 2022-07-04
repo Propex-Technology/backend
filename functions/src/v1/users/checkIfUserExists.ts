@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
-import {USERS_COLLECTION} from "./index";
 import * as express from "express";
+
+const USERS_COLLECTION = 'users';
 
 type UserCheck = {
   returnedTrue: boolean,
@@ -18,8 +19,8 @@ type UserCheckFromAuthToken = UserCheck & {
  */
 export async function checkIfUserExists(userId: string): Promise<UserCheck> {
   const db = admin.firestore();
-  const assetRef = db.collection(USERS_COLLECTION).doc(userId);
-  const userSnapshot = await assetRef.get();
+  const userRef = db.collection(USERS_COLLECTION).doc(userId);
+  const userSnapshot = await userRef.get();
   return {returnedTrue: userSnapshot.exists, userDoc: userSnapshot};
 }
 
@@ -84,7 +85,8 @@ export async function checkIfKYCExistsFromAuthToken(
   // 3. Fetch data & authenticate that user is KYC compliant.
   // NOTE: 'complete' may not be the correct status. May be 'approved'
   const userCheck = await checkIfUserExists(userId);
-  if (userCheck.userDoc?.data()?.kycStatus !== "complete") {
+  if (userCheck.userDoc?.data()?.kycStatus !== "completed") {
+    console.log(userCheck.userDoc?.data());
     res.status(403).json({
       success: false,
       error: "KYC has not been completed.",
