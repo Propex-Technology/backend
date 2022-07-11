@@ -1,7 +1,10 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
 import {checkIfAssetExists} from "./checkIfAssetExists";
-import {checkIfUserExists} from "../users/checkIfUserExists";
+import {checkIfUserExists, checkIfKYCExistsFromAuthToken} from "../users/checkIfUserExists";
+import {ethers} from "ethers";
+import PropexDealERC20 from "../../abi/PropexDealERC20";
+import keys from "../../devKeys";
 
 const Router: express.Router = express.Router();
 
@@ -192,15 +195,11 @@ Router.post("/reserveForPurchase",
           .json({success: false, error: "Queried assetId does not exist."});}
 
       // Assert that the user exists. (TODO: turn into middleware)
-      const authToken = req.get("Authorization");
-      if (authToken == null) {
-        return res.status(403).json({
-          success: false,
-          error: "You do not have permisson.",
-        });
+      const check = await checkIfKYCExistsFromAuthToken(req, res);
+      if (!check.returnedTrue) {
+        return res.status(400).json({success: false, error: "Not authorized."});
       }
-      const authVerification = await admin.auth().verifyIdToken(authToken);
-      const userId = authVerification.uid;
+      const userId = check.userId;
 
       // Assert that user has KYC
       const ue = await checkIfUserExists(userId);
@@ -271,7 +270,7 @@ Router.post("/reserveForPurchase",
 
           return;
         } catch (e) {
-        // Await before attempting again.
+          // Await before attempting again.
           await new Promise((resolve) => setTimeout(resolve, (attempts + 1) * 0.2));
           attempts++;
         }
@@ -280,6 +279,48 @@ Router.post("/reserveForPurchase",
 
       res.status(408).json({success: false, reason: "Timed out."});
       return;
+    });
+
+Router.post("/finalizePurchase",
+    async function(req: express.Request, res: express.Response) {
+      // You should expect some type of information (purchase type)
+      // But for now we're just going to assume USDC
+      // Also this finalize purchase shouldn't have assetId, amount, or address, that should be in reserveForPurchase
+      const assetId: number = parseInt(req.body.assetId);
+      const amount: number = parseInt(req.body.amount);
+      const address: number = req.body.address;
+
+      const assetCheck = await checkIfAssetExists(assetId);
+      if (!assetCheck.returnedTrue) {return res.status(400).json({success: false, error: "Asset does not exist."});}
+      const assetAddress = assetCheck.asset.docs[0].data().contractAddress;
+
+      // TODO: We turned this off but it's mega insecure so like change it please
+      // Assert that the user exists & KYC
+      /*
+      const check = await checkIfKYCExistsFromAuthToken(req, res);
+      if(!check.returnedTrue) {
+        return res.status(400).json({ success: false, error: "Not authorized." });
+      }
+      const userId = check.userId;
+      */
+
+      // TODO: check for purchase
+
+      // TODO: check to make sure that it won't mint over
+
+      // Mint NFT
+      // NOTICE: asset 0 doesn't work because... IT WASNT DEPLOYED BY PROD!!!
+      const isDevelopment = process.env.NODE_ENV == "development";
+      const provider = new ethers.providers.JsonRpcProvider(
+          `https://polygon-${isDevelopment ? "testnet" : "mainnet"}.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b`,
+        isDevelopment ? "maticmum" : "matic"
+      );
+      const wallet = new ethers.Wallet(keys.accountKey, provider);
+      const dealERC = new ethers.Contract(assetAddress, PropexDealERC20.abi, wallet);
+      console.log("Beginning transaction on " + assetAddress);
+      const transaction = await dealERC.mintForUser(address, amount);
+
+      return res.status(200).json({success: true, transaction});
     });
 
 if (process.env.NODE_ENV == "development") {

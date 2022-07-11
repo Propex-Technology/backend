@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import * as express from "express";
 
-const USERS_COLLECTION = 'users';
+const USERS_COLLECTION = "users";
 
 type UserCheck = {
   returnedTrue: boolean,
@@ -91,6 +91,7 @@ export async function checkIfKYCExistsFromAuthToken(
       success: false,
       error: "KYC has not been completed.",
     });
+    return {returnedTrue: false, userDoc: userCheck.userDoc, userId};
   }
 
   return {...userCheck, userId: userId};

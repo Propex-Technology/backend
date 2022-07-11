@@ -54,5 +54,5 @@ const asyncSetup = async () => {
 asyncSetup();
 
 export const v1: functions.HttpsFunction = functions
-  .runWith({ timeoutSeconds: 180 })
-  .https.onRequest(app);
+    .runWith({timeoutSeconds: 180})
+    .https.onRequest(app);

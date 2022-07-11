@@ -215,7 +215,7 @@ Router.get("/balances/:address",
           if (Number.isNaN(assetId) || !Number.isInteger(assetId)) continue;
           if (Number.isNaN(balance) || !Number.isInteger(balance) || balance <= 0) continue;
           if (result?.decimals !== 0) continue;
-        
+
           result.balance = balance;
           tokenCount.push([assetId, result]);
           tokenIds.add(assetId);
