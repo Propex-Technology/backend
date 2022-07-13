@@ -2,13 +2,12 @@ import * as express from "express";
 import * as admin from "firebase-admin";
 import {checkIfKYCExistsFromAuthToken, checkIfUserExistsFromAuthToken} from "./users/checkIfUserExists";
 import {checkIfAssetExists} from "./assets/checkIfAssetExists";
-const Moralis = require("moralis/node");
 import {ethers, BigNumber} from "ethers";
-// import Moralis from "moralis/node";
 import axios from "axios";
 import {recoverPersonalSignature} from "@metamask/eth-sig-util";
 import ISnapshotEnumerable from "../abi/ISnapshotEnumerable";
 import keys from "../devKeys";
+import ERC20 from "../abi/ERC20";
 
 const Router: express.Router = express.Router();
 
@@ -253,17 +252,21 @@ Router.post("/finalizeWithdraw",
 
       // 7. Send the money via the requested method.
       const rate = rates.conversion_rates[withdrawData.currency];
-      const usdToSend = (withdrawData.amount / rate).toFixed(6);
+      const usdToSend = Math.round(withdrawData.amount / rate * 1000000);
 
       console.log("USD to send", usdToSend);
-      const options = { // : Moralis.TransferOptions = {
-        type: "erc20",
-        amount: Moralis.Units.Token(usdToSend.toString(), 6),
-        receiver: address,
-        contractAddress: process.env.NODE_ENV == "development" ? keys.mumbaiUSDC : keys.polygonUSDC,
-      };
-      console.log("Moralis options", options);
-      const result = await Moralis.transfer(options);
+
+      const provider = new ethers.providers.JsonRpcProvider(
+        'https://polygon-testnet.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b',
+        'maticmum'
+      );
+      const wallet = new ethers.Wallet(keys.accountKey, provider);
+      const contract = new ethers.Contract(
+        process.env.NODE_ENV == "development" ? keys.mumbaiUSDC : keys.polygonUSDC,
+        ERC20.abi,
+        wallet
+      );
+      const result = await contract.transfer(address, usdToSend);
 
       return res.status(200).json(result);
     }
