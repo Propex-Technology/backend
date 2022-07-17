@@ -3,7 +3,6 @@ import * as admin from "firebase-admin";
 import * as cors from "cors";
 import * as functions from "firebase-functions";
 import helmet from "helmet";
-import keys from "./devKeys";
 
 // Routers
 import assets from "./v1/assets";

@@ -64,7 +64,7 @@ Router.get("/get/",
               "Accept": "application/json",
               "Persona-Version": "2021-05-14",
               "Content-Type": "application/json",
-              "Authorization": "Bearer " + devKeys.personaSandboxKey,
+              "Authorization": "Bearer " + devKeys.personaKey,
             },
             data: JSON.stringify({
               data: {
@@ -124,7 +124,7 @@ Router.get("/get/verifyKYC/",
           headers: {
             "Accept": "application/json",
             "Persona-Version": "2021-05-14",
-            "Authorization": "Bearer " + devKeys.personaSandboxKey,
+            "Authorization": "Bearer " + devKeys.personaKey,
           },
         });
 
@@ -201,10 +201,9 @@ Router.get("/balances/:address",
     else bal = balData.data() as UserBalance;
 
     // 3. Check blockchain for their NFTs
-    const isDevelopment = process.env.NODE_ENV == "development";
     const provider = new ethers.providers.JsonRpcProvider(
-      `https://polygon-${isDevelopment ? "testnet" : "mainnet"}.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b`,
-      isDevelopment ? "maticmum" : "matic"
+      devKeys.polygonProvider,
+      devKeys.polygonName
     );
     const multi = new MultiCall(provider);
     const idToContract: number[] = [];

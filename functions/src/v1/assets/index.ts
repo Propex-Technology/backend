@@ -4,7 +4,7 @@ import { checkIfAssetExists } from "./checkIfAssetExists";
 import { checkIfUserExists, checkIfKYCExistsFromAuthToken } from "../users/checkIfUserExists";
 import { ethers } from "ethers";
 import PropexDealERC20 from "../../abi/PropexDealERC20";
-import keys from "../../devKeys";
+import devKeys, { accountKey } from "../../devKeys";
 import { MultiCall } from '@indexed-finance/multicall';
 
 const Router: express.Router = express.Router();
@@ -138,10 +138,9 @@ Router.get("/get/:assetId",
     const managerData = (await managerRef.get()).docs[0].data();
 
     // Get purchased amount
-    const isDevelopment = process.env.NODE_ENV == "development";
     const provider = new ethers.providers.JsonRpcProvider(
-      `https://polygon-${isDevelopment ? "testnet" : "mainnet"}.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b`,
-      isDevelopment ? "maticmum" : "matic"
+      devKeys.polygonProvider,
+      devKeys.polygonName
     );
     const contract = new ethers.Contract(assetData.contractAddress, PropexDealERC20.abi, provider);
     const purchasedTokens = (await contract.totalSupply() as ethers.BigNumber).toNumber();
@@ -172,10 +171,9 @@ Router.get("/get/shortlist/:limit/:offset",
       .offset(offset);
     const assetSnapshot = await assetRef.get();
 
-    const isDevelopment = process.env.NODE_ENV == "development";
     const provider = new ethers.providers.JsonRpcProvider(
-      `https://polygon-${isDevelopment ? "testnet" : "mainnet"}.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b`,
-      isDevelopment ? "maticmum" : "matic"
+      devKeys.polygonProvider,
+      devKeys.polygonName
     );
 
     const multi = new MultiCall(provider);
@@ -335,12 +333,11 @@ Router.post("/finalizePurchase",
 
     // Mint NFT
     // NOTICE: asset 0 doesn't work because... IT WASNT DEPLOYED BY PROD!!!
-    const isDevelopment = process.env.NODE_ENV == "development";
     const provider = new ethers.providers.JsonRpcProvider(
-      `https://polygon-${isDevelopment ? "testnet" : "mainnet"}.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b`,
-      isDevelopment ? "maticmum" : "matic"
+      devKeys.polygonProvider,
+      devKeys.polygonName
     );
-    const wallet = new ethers.Wallet(keys.accountKey, provider);
+    const wallet = new ethers.Wallet(accountKey, provider);
     const dealERC = new ethers.Contract(assetAddress, PropexDealERC20.abi, wallet);
     console.log("Beginning transaction on " + assetAddress);
     const transaction = await dealERC.mintForUser(address, amount);

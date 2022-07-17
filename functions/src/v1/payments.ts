@@ -75,11 +75,7 @@ Router.post("/issuePayment",
       if (assetAddress == null) {return res.status(400).json({success: false, error: "Asset has no contract."});}
 
       // 3. Take snapshot of NFT owners.
-      const isDevelopment = process.env.NODE_ENV == "development";
-      const provider = new ethers.providers.JsonRpcProvider(
-          `https://polygon-${isDevelopment ? "testnet" : "mainnet"}.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b`,
-      isDevelopment ? "maticmum" : "matic"
-      );
+      const provider = new ethers.providers.JsonRpcProvider(keys.polygonProvider, keys.polygonName);
       const dealERC = new ethers.Contract(assetAddress, ISnapshotEnumerable.abi, provider);
       const ownerCount: number = (await dealERC.entriesInLastSnapshot()).toNumber();
       const snapshot: { 0: Array<string>, 1: Array<BigNumber> } =
@@ -262,7 +258,7 @@ Router.post("/finalizeWithdraw",
       );
       const wallet = new ethers.Wallet(keys.accountKey, provider);
       const contract = new ethers.Contract(
-        process.env.NODE_ENV == "development" ? keys.mumbaiUSDC : keys.polygonUSDC,
+        keys.usdcAddress,
         ERC20.abi,
         wallet
       );
