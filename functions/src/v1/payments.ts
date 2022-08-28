@@ -169,8 +169,6 @@ Router.post("/withdrawNonce",
 
 Router.post("/finalizeWithdraw",
     async function(req: express.Request, res: express.Response) {
-      console.log("ITS HAPPENING");
-
       // 1. Fetch data & authenticate that user
       const userCheck = await checkIfKYCExistsFromAuthToken(req, res);
       if (!userCheck.returnedTrue) return;
@@ -210,7 +208,6 @@ Router.post("/finalizeWithdraw",
         return res.status(500)
             .json({success: false, error: "Error with fetching exchange rates."});
       }
-      console.log("rates", rates);
 
       // 6. Use a transaction & make sure to log it.
       // TODO: check to make sure that the error throwing works
@@ -253,14 +250,14 @@ Router.post("/finalizeWithdraw",
       console.log("USD to send", usdToSend);
 
       const provider = new ethers.providers.JsonRpcProvider(
-        'https://polygon-testnet.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b',
-        'maticmum'
+          "https://polygon-testnet.blastapi.io/205572af-2fcb-4612-ba1a-f0645203690b",
+          "maticmum"
       );
       const wallet = new ethers.Wallet(keys.accountKey, provider);
       const contract = new ethers.Contract(
-        keys.usdcAddress,
-        ERC20.abi,
-        wallet
+          keys.usdcAddress,
+          ERC20.abi,
+          wallet
       );
       const result = await contract.transfer(address, usdToSend);
 

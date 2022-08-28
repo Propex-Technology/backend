@@ -1,11 +1,11 @@
 import * as express from "express";
 import * as admin from "firebase-admin";
 import { checkIfAssetExists } from "./checkIfAssetExists";
-import { checkIfUserExists, checkIfKYCExistsFromAuthToken } from "../users/checkIfUserExists";
+import { checkIfKYCExistsFromAuthToken } from "../users/checkIfUserExists";
 import { ethers } from "ethers";
 import PropexDealERC20 from "../../abi/PropexDealERC20";
 import devKeys, { accountKey } from "../../devKeys";
-import { MultiCall } from '@indexed-finance/multicall';
+import { MultiCall } from "@indexed-finance/multicall";
 
 const Router: express.Router = express.Router();
 
@@ -13,6 +13,7 @@ export const ASSETS_COLLECTION = "assets";
 const MANAGER_COLLECTION = "managers";
 const PRIMARY_SALE_COLLECTION = "primary_offerings";
 const OFFERING_RESERVATIONS_COLLECTION = "reservations";
+// const PURCHASES_COLLECTION = "purchases";
 const ROI_FIELD = "estimatedROI";
 
 // #endregion
@@ -101,18 +102,18 @@ type PrimaryOffering = {
  */
 type Reservation = {
   userId: string,
+  assetId: number,
   pendingReserved: number,
   lastUpdated: number,
-  payments: {
-    paymentId: string,
-    paymentBegan: boolean,
-    paymentRecieved: boolean,
-    reserved: number
-  }[]
+  purchaseMethod: PurchaseMethod,
+  purchaseId?: string
 };
 
-// #endregion
+enum PurchaseMethod {
+  USDC = "USDC", card = "card"
+}
 
+// #endregion
 
 Router.get("/get/:assetId",
   async function (req: express.Request, res: express.Response) {
@@ -181,7 +182,7 @@ Router.get("/get/shortlist/:limit/:offset",
     const inputs = [];
     for (let d = 0; d < dealCount; d++) {
       const contractAddress = assetSnapshot.docs[d].data().contractAddress;
-      inputs.push({ target: contractAddress, function: 'totalSupply', args: [] });
+      inputs.push({ target: contractAddress, function: "totalSupply", args: [] });
     }
     const tokenSupply: Array<ethers.BigNumber> = (await multi.multiCall(PropexDealERC20.abi, inputs))[1];
 
@@ -203,41 +204,44 @@ Router.get("/get/shortlist/:limit/:offset",
     return;
   });
 
+/*
+HOW PURCHASES WORK (backend): 08/25/22
+
+Before you purchase an asset, you have to reserve the asset for purchase.
+Every user can only have 1 asset+amount reserved at a time
+Every asset needs to have a primary_offering entry to dictate how much it has left
+  This might be weird and be changed later since we're looking at the blockchain for how much there truly is left
+
+1. User attempts to reserve X amount of shares to purchase
+
+TODO: NEEDS A ROUTINE TO AUTOMATICALLY REMOVE OUTDATED RESERVATIONS
+  */
+
 Router.post("/reserveForPurchase",
   async function (req: express.Request, res: express.Response) {
     const assetId: number = parseInt(req.body.assetId);
     const amount: number = parseInt(req.body.amount);
+    const purchaseMethod = req.body.purchaseMethod.toString();
 
     if (isNaN(assetId)) { return res.status(400).json({ success: false, error: "Invalid assetId." }); }
     if (isNaN(amount)) { return res.status(400).json({ success: false, error: "Invalid amount." }); }
+    if (!Object.keys(PurchaseMethod).includes(purchaseMethod)) {
+      return res.status(400).json({ success: false, error: "Invalid purchase method." });
+    }
 
+    // Assert that the asset exists. (TODO: turn into middleware)
     const assetCheck = await checkIfAssetExists(assetId);
     if (!assetCheck.returnedTrue) {
       return res.status(400)
         .json({ success: false, error: "Queried assetId does not exist." });
     }
 
-    // Assert that the user exists. (TODO: turn into middleware)
+    // Assert that the user exists + KYC. (TODO: turn into middleware)
     const check = await checkIfKYCExistsFromAuthToken(req, res);
     if (!check.returnedTrue) {
       return res.status(400).json({ success: false, error: "Not authorized." });
     }
     const userId = check.userId;
-
-    // Assert that user has KYC
-    const ue = await checkIfUserExists(userId);
-    if (!ue.returnedTrue) {
-      return res.status(403).json({
-        success: false,
-        error: "User does not exist.",
-      });
-    }
-    else if (ue.userDoc?.data()?.kycStatus !== "complete") {
-      return res.status(403).json({
-        success: false,
-        error: "User did not complete KYC.",
-      });
-    }
 
     // Attempt, in transaction, to purchase.
     let attempts = 0;
@@ -245,7 +249,7 @@ Router.post("/reserveForPurchase",
       try {
         const db = admin.firestore();
         const primaryRef = db.collection(PRIMARY_SALE_COLLECTION).doc(assetId.toString());
-        const reservationRef = primaryRef.collection(OFFERING_RESERVATIONS_COLLECTION)
+        const reservationRef = db.collection(OFFERING_RESERVATIONS_COLLECTION)
           .doc(userId);
 
         await db.runTransaction(async (t) => {
@@ -259,41 +263,58 @@ Router.post("/reserveForPurchase",
             return; // Premature return
           }
 
-          // 3. Add to total tokens remaining.
-          t.update(primaryRef, { tokensLeft: data.tokensLeft - amount });
-
-          // 4. Add entry to user's reservation.
-          const paymentId = Math.floor(Math.random() * 1000000).toString();
+          // 3. Add entry to user's reservation.
+          let sameAssetBonus = 0;
           const resDoc = await t.get(reservationRef);
           if (resDoc.exists) {
-            const resData: Reservation = await resDoc.data() as Reservation;
-            resData.payments.push({
-              paymentId,
-              paymentBegan: false,
-              paymentRecieved: false,
-              reserved: amount,
-            });
-            t.update(reservationRef, {
-              pendingReserved: resData.pendingReserved + amount,
-              payments: resData.payments,
-            });
+            // a. Get the previous reservation data
+            const resData: Reservation = resDoc.data() as Reservation;
+
+            // b. Update the previous sale that was reserved
+            const prevRef = db.collection(PRIMARY_SALE_COLLECTION).doc(resData.assetId.toString());
+            const prevResOfferingData = (await t.get(prevRef)).data() as PrimaryOffering;
+            if(resData.assetId == assetId) {
+              sameAssetBonus = resData.pendingReserved;
+            }
+            else {
+              t.update(prevRef, { tokensLeft: prevResOfferingData.tokensLeft + resData.pendingReserved });
+            }
+
+            // c. Override the current reservation
+            const newReservation: Reservation = {
+              userId,
+              assetId,
+              pendingReserved: amount,
+              lastUpdated: new Date().getTime(),
+              purchaseMethod,
+              purchaseId: ""
+            };
+            t.update(reservationRef, newReservation);
           }
           else {
             const newReservation: Reservation = {
               userId,
+              assetId,
               pendingReserved: amount,
               lastUpdated: new Date().getTime(),
-              payments: [{
-                paymentId, paymentBegan: false, paymentRecieved: false, reserved: amount,
-              }],
+              purchaseMethod
             };
             t.create(reservationRef, newReservation);
           }
+
+          // 4. Remove from total tokens remaining.
+          t.update(primaryRef, { tokensLeft: data.tokensLeft - amount + sameAssetBonus });
         });
 
+        if (purchaseMethod == PurchaseMethod.card) {
+          // TODO: make a request to stripe
+        }
+
+        res.status(200).json({ success: true });
         return;
       } catch (e) {
         // Await before attempting again.
+        console.log(e);
         await new Promise((resolve) => setTimeout(resolve, (attempts + 1) * 0.2));
         attempts++;
       }
@@ -320,12 +341,12 @@ Router.post("/finalizePurchase",
     // TODO: We turned this off but it's mega insecure so like change it please
     // Assert that the user exists & KYC
     /*
-    const check = await checkIfKYCExistsFromAuthToken(req, res);
-    if(!check.returnedTrue) {
-      return res.status(400).json({ success: false, error: "Not authorized." });
-    }
-    const userId = check.userId;
-    */
+  const check = await checkIfKYCExistsFromAuthToken(req, res);
+  if(!check.returnedTrue) {
+    return res.status(400).json({ success: false, error: "Not authorized." });
+  }
+  const userId = check.userId;
+  */
 
     // TODO: check for purchase
 
